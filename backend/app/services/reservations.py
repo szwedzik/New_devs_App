@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from sqlalchemy import text
 
@@ -35,6 +35,13 @@ MONTHLY_REVENUE_QUERY = text("""
         AND (r.check_in_date AT TIME ZONE p.timezone) < :end_local
     WHERE p.id = :property_id AND p.tenant_id = :tenant_id
     GROUP BY p.id
+""")
+
+PROPERTIES_QUERY = text("""
+    SELECT id, name, timezone
+    FROM properties
+    WHERE tenant_id = :tenant_id
+    ORDER BY name
 """)
 
 
@@ -108,3 +115,19 @@ async def calculate_total_revenue(property_id: str, tenant_id: str) -> Optional[
         "count": row.reservation_count,
         "period": None
     }
+
+
+async def list_properties(tenant_id: str) -> List[Dict[str, Any]]:
+    """
+    Returns the properties belonging to a single tenant.
+    """
+    await _ensure_pool()
+
+    async with db_pool.get_session() as session:
+        result = await session.execute(PROPERTIES_QUERY, {"tenant_id": tenant_id})
+        rows = result.fetchall()
+
+    return [
+        {"id": row.id, "name": row.name, "timezone": row.timezone}
+        for row in rows
+    ]
