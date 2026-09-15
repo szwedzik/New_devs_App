@@ -13,11 +13,13 @@ interface RevenueData {
 
 interface RevenueSummaryProps {
     propertyId?: string;
-    debugTenant?: string; 
+    month?: number;
+    year?: number;
+    debugTenant?: string;
     showRaw?: boolean;
 }
 
-export const RevenueSummary: React.FC<RevenueSummaryProps> = ({ propertyId = 'prop-001', debugTenant, showRaw }) => {
+export const RevenueSummary: React.FC<RevenueSummaryProps> = ({ propertyId = 'prop-001', month, year, debugTenant, showRaw }) => {
     const [data, setData] = useState<RevenueData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -32,7 +34,9 @@ export const RevenueSummary: React.FC<RevenueSummaryProps> = ({ propertyId = 'pr
                 // We pass the simulatedTenant option which SecureAPI will attach as a header
                 const response = await SecureAPI.getDashboardSummary(propertyId, {
                     simulatedTenant: activeTenant,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    month,
+                    year
                 });
                 setData(response);
             } catch (err) {
@@ -44,7 +48,7 @@ export const RevenueSummary: React.FC<RevenueSummaryProps> = ({ propertyId = 'pr
         };
 
         fetchRevenue();
-    }, [propertyId, activeTenant]);
+    }, [propertyId, activeTenant, month, year]);
 
     if (loading) {
         return (
@@ -69,6 +73,11 @@ export const RevenueSummary: React.FC<RevenueSummaryProps> = ({ propertyId = 'pr
         maximumFractionDigits: 2
     });
 
+    // The period is reported in the property's own timezone, not the viewer's.
+    const periodLabel = data.period
+        ? new Date(`${data.period}-01T00:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+        : 'All time';
+
     return (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
             {showRaw && (
@@ -81,7 +90,9 @@ export const RevenueSummary: React.FC<RevenueSummaryProps> = ({ propertyId = 'pr
             <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
                     <div>
-                        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">Total Revenue</h2>
+                        <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                            Total Revenue <span className="text-gray-400 normal-case">· {periodLabel}</span>
+                        </h2>
                         <div className="flex items-baseline gap-2 mt-1">
                             <span className="text-3xl font-bold text-gray-900 tracking-tight">
                                 {data.currency} {displayTotal}

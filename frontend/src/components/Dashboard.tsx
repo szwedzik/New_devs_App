@@ -11,8 +11,15 @@ interface Property {
 const Dashboard: React.FC = () => {
   const [properties, setProperties] = useState<Property[]>([]);
   const [selectedProperty, setSelectedProperty] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // An empty picker means all time; otherwise "YYYY-MM" splits into the
+  // month and year the API expects.
+  const [year, month] = selectedMonth
+    ? selectedMonth.split('-').map(Number)
+    : [undefined, undefined];
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -47,23 +54,35 @@ const Dashboard: React.FC = () => {
                 </p>
               </div>
 
-              {/* Property Selector */}
-              <div className="flex flex-col sm:items-end">
-                <label className="text-xs font-medium text-gray-700 mb-1">Select Property</label>
-                <select
-                  value={selectedProperty}
-                  onChange={(e) => setSelectedProperty(e.target.value)}
-                  disabled={loading || properties.length === 0}
-                  className="block w-full sm:w-auto min-w-[200px] px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm disabled:bg-gray-50 disabled:text-gray-400"
-                >
-                  {loading && <option value="">Loading...</option>}
-                  {!loading && properties.length === 0 && <option value="">No properties available</option>}
-                  {properties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name}
-                    </option>
-                  ))}
-                </select>
+              {/* Property and Period Selectors */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-col">
+                  <label className="text-xs font-medium text-gray-700 mb-1">Select Property</label>
+                  <select
+                    value={selectedProperty}
+                    onChange={(e) => setSelectedProperty(e.target.value)}
+                    disabled={loading || properties.length === 0}
+                    className="block w-full sm:w-auto min-w-[200px] px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                  >
+                    {loading && <option value="">Loading...</option>}
+                    {!loading && properties.length === 0 && <option value="">No properties available</option>}
+                    {properties.map((property) => (
+                      <option key={property.id} value={property.id}>
+                        {property.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-col">
+                  <label className="text-xs font-medium text-gray-700 mb-1">Month (blank for all time)</label>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="block w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -73,7 +92,7 @@ const Dashboard: React.FC = () => {
             {!error && !loading && properties.length === 0 && (
               <p className="text-sm text-gray-500">No properties are assigned to your account yet.</p>
             )}
-            {selectedProperty && <RevenueSummary propertyId={selectedProperty} />}
+            {selectedProperty && <RevenueSummary propertyId={selectedProperty} month={month} year={year} />}
           </div>
         </div>
       </div>
