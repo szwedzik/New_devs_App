@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Dict, Any, Optional
+from decimal import Decimal, ROUND_HALF_UP
 import logging
 from app.services.cache import get_revenue_summary
 from app.core.auth import authenticate_request as get_current_user
@@ -32,11 +33,14 @@ async def get_dashboard_summary(
     if revenue_data is None:
         raise HTTPException(status_code=404, detail="Property not found")
 
-    total_revenue_float = float(revenue_data['total'])
+    # Amounts are stored with sub-cent precision, so they are summed exactly in
+    # SQL and rounded once here. Going through float drops cents, and a bare
+    # Decimal would be serialised back into a float by FastAPI.
+    total_revenue = Decimal(revenue_data['total']).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
     return {
         "property_id": revenue_data['property_id'],
-        "total_revenue": total_revenue_float,
+        "total_revenue": str(total_revenue),
         "currency": revenue_data['currency'],
         "reservations_count": revenue_data['count'],
         "period": revenue_data['period']
