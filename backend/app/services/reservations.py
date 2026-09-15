@@ -1,6 +1,5 @@
 from datetime import datetime
-from decimal import Decimal
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from sqlalchemy import text
 
@@ -21,6 +20,23 @@ TOTAL_REVENUE_QUERY = text("""
     GROUP BY p.id
 """)
 
+# Month boundaries are compared against the check-in time converted to the
+# property's own timezone, so a booking lands in the month the client sees on
+# their calendar rather than the month it happens to fall in under UTC.
+MONTHLY_REVENUE_QUERY = text("""
+    SELECT
+        p.id AS property_id,
+        COALESCE(SUM(r.total_amount), 0) AS total_revenue,
+        COUNT(r.id) AS reservation_count
+    FROM properties p
+    LEFT JOIN reservations r
+        ON r.property_id = p.id AND r.tenant_id = p.tenant_id
+        AND (r.check_in_date AT TIME ZONE p.timezone) >= :start_local
+        AND (r.check_in_date AT TIME ZONE p.timezone) < :end_local
+    WHERE p.id = :property_id AND p.tenant_id = :tenant_id
+    GROUP BY p.id
+""")
+
 
 async def _ensure_pool() -> None:
     """Initialises the shared connection pool on first use."""
@@ -28,34 +44,44 @@ async def _ensure_pool() -> None:
         await db_pool.initialize()
 
 
-async def calculate_monthly_revenue(property_id: str, month: int, year: int, db_session=None) -> Decimal:
+async def calculate_monthly_revenue(
+    property_id: str, tenant_id: str, month: int, year: int
+) -> Optional[Dict[str, Any]]:
     """
-    Calculates revenue for a specific month.
+    Calculates revenue for a specific month, in the property's local timezone.
+    Returns None when the property does not belong to the tenant.
     """
 
+    # Naive datetimes on purpose: AT TIME ZONE yields a local timestamp, so the
+    # bounds have to be local wall clock times rather than absolute instants.
     start_date = datetime(year, month, 1)
     if month < 12:
         end_date = datetime(year, month + 1, 1)
     else:
         end_date = datetime(year + 1, 1, 1)
-        
-    print(f"DEBUG: Querying revenue for {property_id} from {start_date} to {end_date}")
 
-    # SQL Simulation (This would be executed against the actual DB)
-    query = """
-        SELECT SUM(total_amount) as total
-        FROM reservations
-        WHERE property_id = $1
-        AND tenant_id = $2
-        AND check_in_date >= $3
-        AND check_in_date < $4
-    """
-    
-    # In production this query executes against a database session.
-    # result = await db.fetch_val(query, property_id, tenant_id, start_date, end_date)
-    # return result or Decimal('0')
-    
-    return Decimal('0') # Placeholder for now until DB connection is finalized
+    await _ensure_pool()
+
+    async with db_pool.get_session() as session:
+        result = await session.execute(MONTHLY_REVENUE_QUERY, {
+            "property_id": property_id,
+            "tenant_id": tenant_id,
+            "start_local": start_date,
+            "end_local": end_date
+        })
+        row = result.fetchone()
+
+    if row is None:
+        return None
+
+    return {
+        "property_id": row.property_id,
+        "tenant_id": tenant_id,
+        "total": str(row.total_revenue),
+        "currency": "USD",
+        "count": row.reservation_count,
+        "period": f"{year:04d}-{month:02d}"
+    }
 
 async def calculate_total_revenue(property_id: str, tenant_id: str) -> Optional[Dict[str, Any]]:
     """
@@ -79,5 +105,6 @@ async def calculate_total_revenue(property_id: str, tenant_id: str) -> Optional[
         "tenant_id": tenant_id,
         "total": str(row.total_revenue),
         "currency": "USD",
-        "count": row.reservation_count
+        "count": row.reservation_count,
+        "period": None
     }
